@@ -1,0 +1,256 @@
+// Configuração da fonte de dados SQLite e do gerador Prisma Client
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Modelo de Usuário: Armazena informações básicas de autenticação e contato
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique // E-mail único para login
+  passwordHash  String   // Hash seguro da senha (bcrypt)
+  name          String   // Nome completo do usuário
+  phone         String?  // Telefone de contato (opcional)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relacionamentos
+  profile       Profile?
+  addresses     Address[]
+  carts         Cart[]
+  orders        Order[]
+  wishlist      Wishlist[]
+  auditLogs     AuditLog[]
+}
+
+// Perfil do Cliente: Armazena informações de identificação adicionais (LGPD/CPF e preferências)
+model Profile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  cpf         String   @unique // CPF formatado para faturamento nacional
+  birthdate   DateTime // Data de nascimento para validação de idade
+  preferences String?  // JSON string contendo preferências (e.g. temas, categorias favoritas)
+  
+  // Relacionamento com Usuário
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Modelo de Produto: Armazena informações gerais de um item à venda
+model Product {
+  id                String            @id @default(uuid())
+  name              String            // Nome de exibição do produto
+  slug              String            @unique // URL amigável (SEO)
+  description       String            // Descrição resumida para listagens
+  richDescription   String?           // Descrição rica em HTML/Markdown para a página do produto
+  priceCents        Int               // Preço base em centavos (evita problemas de precisão ponto flutuante)
+  comparePriceCents Int?              // Preço de "de" (para promoção "de/por") em centavos
+  weightGrams       Int               // Peso em gramas para cálculo de frete (Correios/Transportadoras)
+  isActive          Boolean           @default(true) // Ativo/inativo no catálogo
+  brand             String?           // Marca do produto
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relacionamentos
+  variants          ProductVariant[]
+  categories        ProductCategory[]
+  images            Image[]
+  reviews           Review[]
+}
+
+// Variantes do Produto: Gerencia variações como Cor, Tamanho, Voltagem, etc.
+model ProductVariant {
+  id            String      @id @default(uuid())
+  productId     String
+  sku           String      @unique // SKU exclusivo para controle de estoque
+  attributesJson String     // JSON string contendo atributos. Ex: '{"cor": "Vermelho", "tamanho": "GG"}'
+  priceCents    Int         // Preço específico da variante em centavos
+  stockQuantity Int         // Quantidade atual disponível no estoque
+  
+  // Relacionamentos
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+}
+
+// Modelo de Categoria: Suporta árvore hierárquica (Categorias e Subcategorias)
+model Category {
+  id        String            @id @default(uuid())
+  name      String            // Nome da categoria (ex: Eletrônicos)
+  slug      String            @unique // URL amigável (SEO)
+  parentId  String?           // ID da categoria pai (auto-relacionamento)
+  
+  // Relacionamentos de hierarquia
+  parent    Category?         @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[]        @relation("CategoryParent")
+  products  ProductCategory[]
+}
+
+// Tabela de Junção N:N para Categorias de Produtos
+model ProductCategory {
+  productId  String
+  categoryId String
+
+  @@id([productId, categoryId])
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+// Galeria de Imagens de Produtos e Variantes
+model Image {
+  id         String   @id @default(uuid())
+  entityType String   // "product" ou "variant" para vincular dinamicamente
+  entityId   String
+  url        String   // URL ou caminho local do arquivo (webp)
+  altText    String?  // Texto alternativo (acessibilidade SEO)
+  sortOrder  Int      @default(0) // Ordem de exibição na galeria (0 é a capa)
+  
+  product    Product? @relation(fields: [entityId], references: [id], onDelete: Cascade)
+}
+
+// Carrinho de Compras: Suporta carrinho de sessão (usuário deslogado) ou de usuário autenticado
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String?    // Nullable se o usuário for visitante (anônimo)
+  sessionId String     @unique // Identificador de sessão único para visitantes
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+}
+
+// Itens do Carrinho: Armazena produtos/variantes adicionados com suas respectivas quantidades
+model CartItem {
+  id        String         @id @default(uuid())
+  cartId    String
+  variantId String
+  quantity  Int
+  priceCents Int           // Preço capturado no momento da adição ao carrinho
+  
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+// Modelo de Pedidos (Orders): Registra o cabeçalho das compras finalizadas
+model Order {
+  id                String       @id @default(uuid())
+  userId            String
+  status            String       // Status atual: "PENDING" (Aguardando Pagto), "PAID" (Pago), "SHIPPED" (Enviado), "DELIVERED" (Entregue), "CANCELLED" (Cancelado)
+  totalCents        Int          // Valor total do pedido em centavos
+  shippingCostCents Int          // Custo do frete cobrado em centavos
+  paymentMethod     String       // Método de pagamento escolhido: "PIX", "BOLETO", "CREDIT_CARD"
+  shippingAddressId String       // Cópia do ID do endereço ou string formatada
+  trackingNumber    String?      // Código de rastreamento do envio
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  
+  // Relacionamentos
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items             OrderItem[]
+  payments          Payment[]
+  shipments         Shipment[]
+}
+
+// Itens do Pedido: Snapshot físico dos produtos adquiridos com os preços praticados na compra
+model OrderItem {
+  id            String         @id @default(uuid())
+  orderId       String
+  variantId     String
+  quantity      Int
+  unitPriceCents Int          // Preço unitário final em centavos
+  
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+// Endereço do Cliente: Armazena dados de entrega
+model Address {
+  id           String   @id @default(uuid())
+  userId       String
+  street       String   // Rua / Avenida
+  number       String   // Número do imóvel
+  complement   String?  // Complemento (Apto, Bloco, etc.)
+  neighborhood String   // Bairro (essencial para entrega em Ananindeua)
+  city         String   // Cidade
+  state        String   // Estado (ex: PA)
+  zip          String   // CEP (limpo/formatado)
+  country      String   @default("Brasil")
+  isDefault    Boolean  @default(false) // Define se é o endereço padrão de entrega
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Pagamentos: Controla as transações financeiras geradas nos gateways
+model Payment {
+  id            String    @id @default(uuid())
+  orderId       String
+  gateway       String    // Gateway utilizado: "PAGARME", "CIELO", "MERCADOPAGO"
+  status        String    // Status do pagamento: "PENDING", "APPROVED", "FAILED", "REFUNDED"
+  amountCents   Int       // Valor total transacionado
+  transactionId String    @unique // ID único da transação gerado pelo gateway
+  paidAt        DateTime? // Data/hora da confirmação do pagamento
+  createdAt     DateTime  @default(now())
+  
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// Envios/Logística (Shipments): Rastreia o envio e entrega física dos produtos
+model Shipment {
+  id            String    @id @default(uuid())
+  orderId       String
+  carrier       String    // Transportadora: "CORREIOS", "LOCAL_EXPRESS" (Entrega local Ananindeua), "JADLOG"
+  trackingNumber String?  // Código para rastreamento
+  status        String    // Status do envio: "PENDING", "PICKED_UP", "IN_TRANSIT", "DELIVERED"
+  shippedAt     DateTime? // Data de envio
+  estimatedDelivery DateTime? // Estimativa de entrega
+  
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// Cupons de Desconto: Gestão de descontos e promoções do e-commerce
+model Coupon {
+  id           String    @id @default(uuid())
+  code         String    @unique // Código promocional (ex: ANANIN10)
+  discountType String    // Tipo: "PERCENTAGE" (percentual) ou "FIXED_AMOUNT" (valor fixo)
+  valueCents   Int       // Valor do desconto em centavos ou porcentagem multiplicada por 100
+  expiresAt    DateTime? // Data de expiração
+  usageLimit   Int?      // Limite total de vezes que o cupom pode ser usado
+  usageCount   Int       @default(0) // Contador de uso
+  isActive     Boolean   @default(true) // Status ativo/inativo
+}
+
+// Avaliações de Produtos: UX de feedback dos clientes
+model Review {
+  id        String   @id @default(uuid())
+  productId String
+  userName  String   // Nome de exibição do avaliador
+  rating    Int      // Nota de 1 a 5 estrelas
+  comment   String?  // Comentário (opcional)
+  createdAt DateTime @default(now())
+  
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// Lista de Desejos (Wishlist): Permite salvar itens favoritos para compra futura
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Logs de Auditoria: Registra eventos críticos no sistema para segurança e conformidade (LGPD)
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  // Usuário que originou a ação (nulo para processos automáticos do sistema)
+  action    String   // Ex: "USER_LOGIN", "ORDER_CREATED", "STOCK_UPDATE", "PII_ACCESS"
+  details   String   // Detalhes da alteração (pode conter JSON)
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

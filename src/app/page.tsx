@@ -1,65 +1,135 @@
-import Image from "next/image";
+import React, { Suspense } from "react";
+import Link from "next/link";
+import { Smartphone, Laptop, Headphones, Wifi, Truck } from "lucide-react";
+import { db } from "@/lib/db";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import Carousel from "@/components/Carousel";
+import ProductCard from "@/components/ProductCard";
+import styles from "./page.module.css";
 
-export default function Home() {
+
+
+
+async function getFeaturedProducts() {
+  "use cache";
+  try {
+    // Busca um produto de cada uma das 4 categorias principais
+    const categorySlugs = ["smartphones", "informatica", "fones-e-audio", "acessorios"];
+    const productsPromises = categorySlugs.map(slug => 
+      db.product.findFirst({
+        where: {
+          isActive: true,
+          categories: {
+            some: {
+              category: { slug }
+            }
+          }
+        },
+        include: {
+          images: {
+            orderBy: { sortOrder: "asc" }
+          }
+        }
+      })
+    );
+    const results = await Promise.all(productsPromises);
+    return results.filter((p): p is NonNullable<typeof p> => p !== null);
+  } catch (error) {
+    console.error("Erro ao recuperar produtos no SSR:", error);
+    return [];
+  }
+}
+
+/**
+ * Página Inicial do E-Commerce (Home Page)
+ * 
+ * Implementada como um Next.js Server Component (SSR).
+ * Realiza a consulta de produtos utilizando 'use cache' no servidor, 
+ * otimizando o carregamento inicial, SEO e permitindo navegação instantânea.
+ */
+export default async function HomePage() {
+  const featuredProducts = await getFeaturedProducts();
+
+  // Lista estática de categorias para navegação rápida
+  const categories = [
+    { name: "Smartphones", slug: "smartphones", icon: <Smartphone size={32} /> },
+    { name: "Informática", slug: "informatica", icon: <Laptop size={32} /> },
+    { name: "Fones & Áudio", slug: "fones-e-audio", icon: <Headphones size={32} /> },
+    { name: "Acessórios", slug: "acessorios", icon: <Wifi size={32} /> }
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className={styles.main}>
+      {/* Cabeçalho Global */}
+      <Suspense fallback={<div style={{ height: "var(--header-height)" }} />}>
+        <Header />
+      </Suspense>
+
+      {/* Hero Banner Section */}
+      <section className={`${styles.heroSection} container`}>
+        <Carousel />
+      </section>
+
+      {/* Seção 1: Categorias de Destaque */}
+      <section className={`${styles.section} container`}>
+        <h2 className={styles.sectionTitle}>Navegue por Categorias</h2>
+        <div className={styles.categoriesGrid}>
+          {categories.map((cat) => (
+            <Link 
+              key={cat.slug} 
+              href={`/catalog?category=${cat.slug}`}
+              className={styles.categoryCard}
+              title={`Ver produtos da categoria ${cat.name}`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <div className={styles.categoryIcon}>{cat.icon}</div>
+              <span className={styles.categoryName}>{cat.name}</span>
+            </Link>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* Seção 2: Vitrine de Produtos em Destaque */}
+      <section className={`${styles.section} container`}>
+        <h2 className={styles.sectionTitle}>Novidades para Você</h2>
+        {featuredProducts.length > 0 ? (
+          <div className={styles.productsGrid}>
+            {featuredProducts.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+            Nenhum produto cadastrado no momento.
+          </div>
+        )}
+      </section>
+
+      {/* Seção 3: Banner Logístico com Oferta Local (Ananindeua, PA) */}
+      <section className={`${styles.section} container`}>
+        <div className={styles.regionalBanner}>
+          {/* Conteúdo de marketing do frete expresso local */}
+          <div className={styles.regionalContent}>
+            <span className={styles.regionalTag}>Orgulho Paraense</span>
+            <h2 className={styles.regionalTitle}>Entrega Expressa Grátis em Ananindeua</h2>
+            <p className={styles.regionalDescription}>
+              Comprando em nossa loja com endereço em Ananindeua (PA), você recebe seu pedido no mesmo dia
+              sem custo de frete através do DNT Express. Válido também para retirada agendada física.
+            </p>
+          </div>
+          
+          {/* Botão de chamada para ação (CTA) */}
+          <Link href="/catalog" className={styles.regionalCTA}>
+            Aproveitar Frete Grátis
+          </Link>
+
+          {/* Ícone de fundo decorativo */}
+          <Truck size={200} className={styles.regionalBackground} aria-hidden="true" />
         </div>
-      </main>
+      </section>
+
+      {/* Rodapé Global */}
+      <Footer />
     </div>
   );
 }
