@@ -79,7 +79,7 @@ export async function GET() {
           birthdate: user.profile.birthdate,
         } : null,
         addresses: user.addresses,
-        wishlist: user.wishlist.map(w => {
+        wishlist: user.wishlist.map((w: { id: string, productId: string }) => {
           const prod = wishlistProducts.find(p => p.id === w.productId);
           return {
             id: w.id,
