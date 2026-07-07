@@ -52,7 +52,7 @@ export async function GET() {
 
     // Busca as informações dos produtos favoritados separadamente,
     // já que não existe chave estrangeira explícita configurada no Prisma Schema.
-    const productIds = user.wishlist.map(w => w.productId);
+    const productIds = user.wishlist.map((w: { productId: string }) => w.productId);
     const wishlistProducts = await db.product.findMany({
       where: {
         id: { in: productIds },
