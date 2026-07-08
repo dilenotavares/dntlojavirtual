@@ -1,11 +1,12 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   typescript: {
-    // Ignora os erros chatos de tipo no build
+    // Ignora os erros de tipo no build
     ignoreBuildErrors: true,
   },
   experimental: {
-    // Reativa as funções de velocidade e cache que o seu projeto usa
+    // Reativa as funções de velocidade e cache
     cacheComponents: true,
     instantNavigationDevToolsToggle: true,
   },
