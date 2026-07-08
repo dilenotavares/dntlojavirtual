@@ -1,11 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    // !! ATENÇÃO !!
-    // Isso ignora os erros de tipo na hora do build da Vercel.
+    // Ignora os erros chatos de tipo no build
     ignoreBuildErrors: true,
   },
-  // se tiver outras coisas aqui embaixo, pode manter!
+  experimental: {
+    // Reativa as funções de velocidade e cache que o seu projeto usa
+    cacheComponents: true,
+    instantNavigationDevToolsToggle: true,
+  },
 };
 
 export default nextConfig;
